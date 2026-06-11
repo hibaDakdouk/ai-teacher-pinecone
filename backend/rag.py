@@ -1,12 +1,13 @@
 import uuid
-
-import chromadb
+from pinecone import Pinecone
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index = pc.Index("ai-teacher")
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list:
     """
@@ -70,23 +71,19 @@ def store_chunks(chunks: list, embeddings: list, collection_name= "student_docs"
     Returns:
         None
     """
-    # Create a persistent client — saves to disk so data survives restarts
-    client = chromadb.PersistentClient(path="./chroma_db")
+    if collection_name == "student_docs":
+        index.delete(filter={"source": "student_docs"})
 
-    if collection_name == "student_docs":  # only delete student docs, never owner docs
-        try:
-            client.delete_collection(collection_name)
-        except:
-            pass
-    
-    # Get or create a collection — like a table in a regular database
-    collection = client.get_or_create_collection(name=collection_name)
+    index.upsert(vectors=[
+    {
+        "id": str(uuid.uuid4()),
+        "values": embedding,
+        "metadata": {"text": chunk, "source": collection_name}
+    }
+    for chunk, embedding in zip(chunks, embeddings)
+])
 
-    # generate ids for each chunk
-    ids = [str(uuid.uuid4()) for i in range(len(chunks))]
-
-    # Add the chunks and their embeddings to the collection
-    collection.add(ids=ids, documents=chunks, embeddings=embeddings)    
+       
 
 def index_document(text:str, collection_name: str = "student_docs") -> int:
     """
@@ -114,25 +111,15 @@ def search(query: str, n_results: int = 3) -> list:
         input=[query]
     )
     query_embedding = response.data[0].embedding
-
-    # connect to ChromaDB and get the collections
-    chromadb_client = chromadb.PersistentClient(path="./chroma_db")
     
-    all_results = []
-
     try:
-        collection_1 = chromadb_client.get_collection(name="student_docs")
-        results_1 = collection_1.query(query_embeddings=[query_embedding], n_results=n_results)
-        all_results += results_1['documents'][0]
+        results= index.query(
+            vector=query_embedding,
+            top_k=n_results,
+            include_metadata=True  # we need the text back from metadata
+        )
+        results = [match["metadata"]["text"] for match in results["matches"]]
+        return results
     except:
-        pass  # student hasn't uploaded anything yet
-
-    try:
-        collection_2 = chromadb_client.get_collection(name="owner_docs")
-        results_2 = collection_2.query(query_embeddings=[query_embedding], n_results=n_results)
-        all_results += results_2['documents'][0]
-    except:
-        pass  # owner hasn't uploaded anything yet
-
-    return all_results
+        return []  # student hasn't uploaded anything yet
     
