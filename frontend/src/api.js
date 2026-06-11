@@ -1,7 +1,7 @@
 // the file that talks to the backend
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000'; // Update this if your backend is running on a different URL
+const API_URL = 'https://ai-teacher-pinecone-production.up.railway.app'; // Update this if your backend is running on a different URL
 
 export const sendMessage = async (messages) => {
   

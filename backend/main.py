@@ -10,7 +10,10 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,    
-    allow_origins=["*"], # Update this to match your frontend URL
+    allow_origins=[
+    "http://localhost:5173",                          # local dev
+    "https://ai-teacher-pinecone.vercel.app"          # production
+    ], 
     allow_methods=["*"],
     allow_headers=["*"],
 )
